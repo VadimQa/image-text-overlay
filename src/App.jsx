@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from "react";
 
 // ------------------ PRESETS ---------------------
@@ -9,6 +8,15 @@ const PRESETS = {
     fill: "#FFFFFF",
     stroke: "#FF3B30",
     strokeWidth: 8,
+  },
+  amo_strong: {
+    name: "Amo Strong",
+    fontFamily: "Impact, Arial Black, sans-serif",
+    fill: "#FFFFFF",
+    stroke: "#FF0000",
+    strokeWidth: 14,
+    shadowStroke: "#000000",
+    shadowStrokeWidth: 20,
   },
   breaking: {
     name: "Breaking",
@@ -25,21 +33,21 @@ const PRESETS = {
     strokeWidth: 0,
   },
   labelbox: {
-    name: "Label box",
-    fontFamily: "Arial, Helvetica, sans-serif",
-    fill: "#000000",
-    stroke: "transparent",
-    strokeWidth: 0,
-    box: {
-      paddingX: 40,
-      paddingY: 30,
-      borderColor: "#000000",
-      borderWidth: 6,
-      backgroundColor: "#ffffff",
-      shadowColor: "#E87561",
-      shadowOffset: 40,
+      name: "Label box",
+      fontFamily: "Arial, Helvetica, sans-serif",
+      fill: "#000000",
+      stroke: "transparent",
+      strokeWidth: 0,
+      box: {
+        paddingX: 40,
+        paddingY: 30,
+        borderColor: "#000000",
+        borderWidth: 6,
+        backgroundColor: "#ffffff",
+//         shadowColor: "#E87561",
+        shadowOffset: 40,
+      },
     },
-  },
   none: {
     name: "None",
   },
@@ -63,13 +71,16 @@ export default function App() {
 
   const logoDrag = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
 
-  // TEXT DRAG
+  // TEXT DRAG STATE
   const dragState = useRef({
     dragging: false,
     targetId: null,
     offsetX: 0,
     offsetY: 0,
   });
+
+  // HOVER highlight
+  const [hoverId, setHoverId] = useState(null);
 
   function handleImageUpload(e) {
     const f = e.target.files?.[0];
@@ -82,7 +93,73 @@ export default function App() {
   useEffect(() => {
     if (!imageUrl) return;
     renderCanvas();
-  }, [imageUrl, texts, logoEnabled, logoColor, logoScale, logoPos]);
+  }, [imageUrl, texts, logoEnabled, logoColor, logoScale, logoPos, hoverId]);
+
+  // ------------------- HIGHLIGHT BLOCK ----------------------
+  function drawHighlight(ctx, block) {
+    if (hoverId !== block.id) return;
+
+    const preset = PRESETS[block.preset];
+    const lines = block.text.split("\n");
+    const lh = block.fontSize * 1.2;
+
+    ctx.font = `bold ${block.fontSize}px ${preset.fontFamily}`;
+
+    const textWidth = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    const textHeight = lines.length * lh;
+
+    let L, R, T, B;
+
+    if (preset.box) {
+      const padX = preset.box.paddingX;
+      const padY = preset.box.paddingY;
+
+      L = block.x - textWidth / 2 - padX;
+      R = block.x + textWidth / 2 + padX;
+      T = block.y - textHeight / 2 - padY;
+      B = block.y + textHeight / 2 + padY + preset.box.shadowOffset;
+    } else {
+      const EXTRA = 20;
+
+      L = block.x - textWidth / 2 - EXTRA;
+      R = block.x + textWidth / 2 + EXTRA;
+      T = block.y - textHeight / 2 - EXTRA;
+      B = block.y + textHeight / 2 + EXTRA;
+    }
+
+    ctx.fillStyle = "rgba(255,255,0,0.25)";
+    ctx.fillRect(L, T, R - L, B - T);
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,0,0.6)";
+    ctx.strokeRect(L, T, R - L, B - T);
+  }
+
+  function drawLogoHighlight(ctx) {
+    if (hoverId !== "logo") return;
+
+    const img = new Image();
+    img.onload = () => {
+      const w = img.width * logoScale;
+      const h = img.height * logoScale;
+
+      const L = logoPos.x - w / 2 - 10;
+      const T = logoPos.y - h / 2 - 10;
+
+      ctx.fillStyle = "rgba(0,150,255,0.25)";
+      ctx.fillRect(L, T, w + 20, h + 20);
+
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(0,150,255,0.6)";
+      ctx.strokeRect(L, T, w + 20, h + 20);
+    };
+    img.src =
+      logoColor === "black"
+        ? "/image-text-overlay/logo-black.png"
+        : "/image-text-overlay/logo-white.png";
+  }
+
+  // ----------------------------------------------------------
 
   function drawBlock(ctx, block) {
     const preset = PRESETS[block.preset];
@@ -131,6 +208,7 @@ export default function App() {
         ctx.strokeStyle = preset.stroke;
         ctx.strokeText(line, block.x, y);
       }
+
       ctx.fillStyle = preset.fill;
       ctx.fillText(line, block.x, y);
     });
@@ -145,7 +223,10 @@ export default function App() {
       const h = img.height * logoScale;
       ctx.drawImage(img, logoPos.x - w / 2, logoPos.y - h / 2, w, h);
     };
-    img.src = logoColor === "black" ? "/image-text-overlay/logo-black.png" : "/image-text-overlay/logo-white.png";
+    img.src =
+      logoColor === "black"
+        ? "/image-text-overlay/logo-black.png"
+        : "/image-text-overlay/logo-white.png";
   }
 
   function renderCanvas() {
@@ -161,7 +242,11 @@ export default function App() {
       canvas.height = img.height * scale;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      texts.forEach((t) => drawHighlight(ctx, t));
+      if (logoEnabled) drawLogoHighlight(ctx);
 
       texts.forEach((t) => drawBlock(ctx, t));
       drawLogo(ctx);
@@ -169,17 +254,23 @@ export default function App() {
     img.src = imageUrl;
   }
 
+  // ---------------------- HIT AREA ---------------------
   function hitLogo(x, y) {
     if (!logoEnabled) return false;
     const img = new Image();
-    img.src = logoColor === "black" ? "/image-text-overlay/logo-black.png" : "/image-text-overlay/logo-white.png";
+    img.src =
+      logoColor === "black"
+        ? "/image-text-overlay/logo-black.png"
+        : "/image-text-overlay/logo-white.png";
+
     const w = img.width * logoScale;
     const h = img.height * logoScale;
+
     return (
-      x >= logoPos.x - w / 2 &&
-      x <= logoPos.x + w / 2 &&
-      y >= logoPos.y - h / 2 &&
-      y <= logoPos.y + h / 2
+      x >= logoPos.x - w / 2 - 10 &&
+      x <= logoPos.x + w / 2 + 10 &&
+      y >= logoPos.y - h / 2 - 10 &&
+      y <= logoPos.y + h / 2 + 10
     );
   }
 
@@ -203,30 +294,24 @@ export default function App() {
         const L = block.x - textWidth / 2 - padX;
         const R = block.x + textWidth / 2 + padX;
         const T = block.y - textHeight / 2 - padY;
-        const B = block.y + textHeight / 2 + padY;
+        let B = block.y + textHeight / 2 + padY;
 
-        //
         B += preset.box.shadowOffset;
 
         if (x >= L && x <= R && y >= T && y <= B) return block.id;
       } else {
+        const HIT = 20;
+
         for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const width = ctx.measureText(line).width;
+          const width = ctx.measureText(lines[i]).width;
           const height = block.fontSize;
           const cy = block.y + (i - (lines.length - 1) / 2) * lh;
 
-          const HIT_PADDING = 20;
-
           if (
-//             x >= block.x - width / 2 &&
-//             x <= block.x + width / 2 &&
-//             y >= cy - height / 2 &&
-//             y <= cy + height / 2
-   x >= block.x - width / 2 - HIT_PADDING &&
-   x <= block.x + width / 2 + HIT_PADDING &&
-   y >= cy - height / 2 - HIT_PADDING &&
-   y <= cy + height / 2 + HIT_PADDING
+            x >= block.x - width / 2 - HIT &&
+            x <= block.x + width / 2 + HIT &&
+            y >= cy - height / 2 - HIT &&
+            y <= cy + height / 2 + HIT
           ) {
             return block.id;
           }
@@ -235,6 +320,21 @@ export default function App() {
     }
 
     return null;
+  }
+
+  // ----------------------- MOUSE EVENTS ----------------------
+  function handleHover(e) {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    if (hitLogo(mx, my)) {
+      setHoverId("logo");
+      return;
+    }
+
+    const id = findTextHit(mx, my);
+    setHoverId(id);
   }
 
   function onMouseDown(e) {
@@ -265,6 +365,8 @@ export default function App() {
   }
 
   function onMouseMove(e) {
+    handleHover(e);
+
     const rect = canvasRef.current.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
@@ -294,6 +396,7 @@ export default function App() {
     logoDrag.current.dragging = false;
   }
 
+  // ----------------------------------------------
   function download() {
     const c = canvasRef.current;
     const a = document.createElement("a");
@@ -305,10 +408,15 @@ export default function App() {
   return (
     <div style={{ display: "flex", height: "100vh", background: "#0f172a", color: "white" }}>
 
-      <div style={{
-        width: "340px", background: "#111827", padding: 20,
-        borderRight: "1px solid #1f2937", overflowY: "auto"
-      }}>
+      <div
+        style={{
+          width: "340px",
+          background: "#111827",
+          padding: 20,
+          borderRight: "1px solid #1f2937",
+          overflowY: "auto",
+        }}
+      >
         <h2>Налаштування</h2>
 
         <div style={{ marginBottom: 20 }}>
@@ -325,7 +433,8 @@ export default function App() {
             type="checkbox"
             checked={logoEnabled}
             onChange={(e) => setLogoEnabled(e.target.checked)}
-          /> Увімкнути логотип
+          />{" "}
+          Увімкнути логотип
         </label>
 
         {logoEnabled && (
@@ -363,10 +472,17 @@ export default function App() {
             <textarea
               rows={3}
               value={t.text}
-              onChange={(e) => setTexts((p) =>
-                p.map((x) => x.id === t.id ? { ...x, text: e.target.value } : x)
-              )}
-              style={{ width: "100%", background: "#000", color: "white", marginTop: 6 }}
+              onChange={(e) =>
+                setTexts((p) =>
+                  p.map((x) => (x.id === t.id ? { ...x, text: e.target.value } : x))
+                )
+              }
+              style={{
+                width: "100%",
+                background: "#000",
+                color: "white",
+                marginTop: 6,
+              }}
             />
 
             <label>Розмір</label>
@@ -393,10 +509,17 @@ export default function App() {
                   p.map((x) => (x.id === t.id ? { ...x, preset: e.target.value } : x))
                 )
               }
-              style={{ width: "100%", background: "#000", color: "white", marginTop: 6 }}
+              style={{
+                width: "100%",
+                background: "#000",
+                color: "white",
+                marginTop: 6,
+              }}
             >
               {Object.entries(PRESETS).map(([key, v]) => (
-                <option key={key} value={key}>{v.name}</option>
+                <option key={key} value={key}>
+                  {v.name}
+                </option>
               ))}
             </select>
           </div>
@@ -404,7 +527,12 @@ export default function App() {
 
         <button
           onClick={download}
-          style={{ width: "100%", padding: "12px 20px", background: "#ef4444", borderRadius: 8 }}
+          style={{
+            width: "100%",
+            padding: "12px 20px",
+            background: "#ef4444",
+            borderRadius: 8,
+          }}
         >
           Завантажити PNG
         </button>
