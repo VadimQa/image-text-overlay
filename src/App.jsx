@@ -8,23 +8,29 @@ const PRESETS = {
     fill: "#FFFFFF",
     stroke: "#FF3B30",
     strokeWidth: 8,
+    letterSpacing: 3,
   },
+
   amo_strong: {
     name: "Amo Strong",
     fontFamily: "Impact, Arial Black, sans-serif",
     fill: "#FFFFFF",
     stroke: "#FF0000",
-    strokeWidth: 14,
+    strokeWidth: 10,
     shadowStroke: "#000000",
     shadowStrokeWidth: 20,
+    letterSpacing: 3,
   },
+
   breaking: {
     name: "Breaking",
     fontFamily: "Anton, sans-serif",
     fill: "#FFFFFF",
     stroke: "#000000",
     strokeWidth: 8,
+    letterSpacing: 2,
   },
+
   simple: {
     name: "Simple white",
     fontFamily: "system-ui, sans-serif",
@@ -32,25 +38,24 @@ const PRESETS = {
     stroke: "transparent",
     strokeWidth: 0,
   },
+
   labelbox: {
-      name: "Label box",
-      fontFamily: "Arial, Helvetica, sans-serif",
-      fill: "#000000",
-      stroke: "transparent",
-      strokeWidth: 0,
-      box: {
-        paddingX: 40,
-        paddingY: 30,
-        borderColor: "#000000",
-        borderWidth: 6,
-        backgroundColor: "#ffffff",
-//         shadowColor: "#E87561",
-        shadowOffset: 40,
-      },
+    name: "Label box",
+    fontFamily: "Arial, Helvetica, sans-serif",
+    fill: "#000000",
+    stroke: "transparent",
+    strokeWidth: 0,
+    box: {
+      paddingX: 40,
+      paddingY: 30,
+      borderColor: "#000000",
+      borderWidth: 6,
+      backgroundColor: "#ffffff",
+      shadowOffset: 40,
     },
-  none: {
-    name: "None",
   },
+
+  none: { name: "None" },
 };
 
 export default function App() {
@@ -71,7 +76,7 @@ export default function App() {
 
   const logoDrag = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
 
-  // TEXT DRAG STATE
+  // TEXT DRAG
   const dragState = useRef({
     dragging: false,
     targetId: null,
@@ -79,8 +84,35 @@ export default function App() {
     offsetY: 0,
   });
 
-  // HOVER highlight
   const [hoverId, setHoverId] = useState(null);
+
+  // -------------------------------------------------------------------
+  // CUSTOM LETTER SPACING DRAW
+  function drawTextWithSpacing(ctx, text, centerX, y, spacing, strokeStyle, strokeWidth, fillStyle) {
+    if (!text) return;
+
+    let totalWidth = 0;
+    for (let ch of text) totalWidth += ctx.measureText(ch).width;
+    totalWidth += spacing * (text.length - 1);
+
+    let x = centerX - totalWidth / 2;
+
+    for (let ch of text) {
+      const w = ctx.measureText(ch).width;
+
+      if (strokeWidth > 0 && strokeStyle) {
+        ctx.lineWidth = strokeWidth;
+        ctx.strokeStyle = strokeStyle;
+        ctx.strokeText(ch, x + w / 2, y);
+      }
+
+      ctx.fillStyle = fillStyle;
+      ctx.fillText(ch, x + w / 2, y);
+
+      x += w + spacing;
+    }
+  }
+  // -------------------------------------------------------------------
 
   function handleImageUpload(e) {
     const f = e.target.files?.[0];
@@ -95,7 +127,7 @@ export default function App() {
     renderCanvas();
   }, [imageUrl, texts, logoEnabled, logoColor, logoScale, logoPos, hoverId]);
 
-  // ------------------- HIGHLIGHT BLOCK ----------------------
+  // --------------------- HIGHLIGHT BOX ---------------------
   function drawHighlight(ctx, block) {
     if (hoverId !== block.id) return;
 
@@ -159,15 +191,17 @@ export default function App() {
         : "/image-text-overlay/logo-white.png";
   }
 
-  // ----------------------------------------------------------
-
+  // ----------------- DRAW TEXT BLOCK ---------------------
   function drawBlock(ctx, block) {
     const preset = PRESETS[block.preset];
     const lines = block.text.split("\n");
     const lh = block.fontSize * 1.2;
 
     ctx.font = `bold ${block.fontSize}px ${preset.fontFamily}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
 
+    // BOX (Labelbox)
     if (preset.box) {
       const textWidth = Math.max(...lines.map((l) => ctx.measureText(l).width));
       const textHeight = lines.length * lh;
@@ -175,45 +209,59 @@ export default function App() {
       const padX = preset.box.paddingX;
       const padY = preset.box.paddingY;
 
-      const boxLeft = block.x - textWidth / 2 - padX;
-      const boxRight = block.x + textWidth / 2 + padX;
-      const boxTop = block.y - textHeight / 2 - padY;
-      const boxBottom = block.y + textHeight / 2 + padY;
+      const L = block.x - textWidth / 2 - padX;
+      const R = block.x + textWidth / 2 + padX;
+      const T = block.y - textHeight / 2 - padY;
+      const B = block.y + textHeight / 2 + padY;
 
-      ctx.fillStyle = preset.box.shadowColor;
+      // shadow bottom-right
+      ctx.fillStyle = "#E87561";
       ctx.beginPath();
-      ctx.moveTo(boxLeft, boxBottom);
-      ctx.lineTo(boxRight, boxBottom);
-      ctx.lineTo(boxRight - preset.box.shadowOffset, boxBottom + preset.box.shadowOffset);
-      ctx.lineTo(boxLeft - preset.box.shadowOffset, boxBottom + preset.box.shadowOffset);
+      ctx.moveTo(L, B);
+      ctx.lineTo(R, B);
+      ctx.lineTo(R - preset.box.shadowOffset, B + preset.box.shadowOffset);
+      ctx.lineTo(L - preset.box.shadowOffset, B + preset.box.shadowOffset);
       ctx.closePath();
       ctx.fill();
 
       ctx.fillStyle = preset.box.backgroundColor;
-      ctx.fillRect(boxLeft, boxTop, boxRight - boxLeft, boxBottom - boxTop);
+      ctx.fillRect(L, T, R - L, B - T);
 
       ctx.lineWidth = preset.box.borderWidth;
       ctx.strokeStyle = preset.box.borderColor;
-      ctx.strokeRect(boxLeft, boxTop, boxRight - boxLeft, boxBottom - boxTop);
+      ctx.strokeRect(L, T, R - L, B - T);
     }
 
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-
+    // TEXT LINES
     lines.forEach((line, i) => {
       const y = block.y + (i - (lines.length - 1) / 2) * lh;
 
-      if (!preset.box && preset.strokeWidth > 0) {
-        ctx.lineWidth = preset.strokeWidth;
-        ctx.strokeStyle = preset.stroke;
-        ctx.strokeText(line, block.x, y);
-      }
+      // Custom letter spacing?
+      if (preset.letterSpacing && preset.letterSpacing > 0) {
+        drawTextWithSpacing(
+          ctx,
+          line,
+          block.x,
+          y,
+          preset.letterSpacing,
+          preset.stroke,
+          preset.strokeWidth,
+          preset.fill
+        );
+      } else {
+        if (!preset.box && preset.strokeWidth > 0) {
+          ctx.lineWidth = preset.strokeWidth;
+          ctx.strokeStyle = preset.stroke;
+          ctx.strokeText(line, block.x, y);
+        }
 
-      ctx.fillStyle = preset.fill;
-      ctx.fillText(line, block.x, y);
+        ctx.fillStyle = preset.fill;
+        ctx.fillText(line, block.x, y);
+      }
     });
   }
 
+  // ----------------- DRAW LOGO ---------------------
   function drawLogo(ctx) {
     if (!logoEnabled) return;
 
@@ -229,6 +277,7 @@ export default function App() {
         : "/image-text-overlay/logo-white.png";
   }
 
+  // ---------------- RENDER CANVAS -----------------
   function renderCanvas() {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -242,21 +291,22 @@ export default function App() {
       canvas.height = img.height * scale;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      texts.forEach((t) => drawHighlight(ctx, t));
+      texts.forEach((b) => drawHighlight(ctx, b));
       if (logoEnabled) drawLogoHighlight(ctx);
 
-      texts.forEach((t) => drawBlock(ctx, t));
+      texts.forEach((b) => drawBlock(ctx, b));
       drawLogo(ctx);
     };
+
     img.src = imageUrl;
   }
 
-  // ---------------------- HIT AREA ---------------------
+  // ---------------- HIT AREAS --------------------
   function hitLogo(x, y) {
     if (!logoEnabled) return false;
+
     const img = new Image();
     img.src =
       logoColor === "black"
@@ -303,15 +353,16 @@ export default function App() {
         const HIT = 20;
 
         for (let i = 0; i < lines.length; i++) {
-          const width = ctx.measureText(lines[i]).width;
-          const height = block.fontSize;
+          const line = lines[i];
+          const w = ctx.measureText(line).width;
+          const h = block.fontSize;
           const cy = block.y + (i - (lines.length - 1) / 2) * lh;
 
           if (
-            x >= block.x - width / 2 - HIT &&
-            x <= block.x + width / 2 + HIT &&
-            y >= cy - height / 2 - HIT &&
-            y <= cy + height / 2 + HIT
+            x >= block.x - w / 2 - HIT &&
+            x <= block.x + w / 2 + HIT &&
+            y >= cy - h / 2 - HIT &&
+            y <= cy + h / 2 + HIT
           ) {
             return block.id;
           }
@@ -322,7 +373,7 @@ export default function App() {
     return null;
   }
 
-  // ----------------------- MOUSE EVENTS ----------------------
+  // ---------------- MOUSE -----------------------
   function handleHover(e) {
     const rect = canvasRef.current.getBoundingClientRect();
     const mx = e.clientX - rect.left;
@@ -396,7 +447,7 @@ export default function App() {
     logoDrag.current.dragging = false;
   }
 
-  // ----------------------------------------------
+  // ---------------- DOWNLOAD ----------------------
   function download() {
     const c = canvasRef.current;
     const a = document.createElement("a");
@@ -405,9 +456,10 @@ export default function App() {
     a.click();
   }
 
+  // ---------------- RENDER ------------------------
   return (
     <div style={{ display: "flex", height: "100vh", background: "#0f172a", color: "white" }}>
-
+      {/* LEFT SIDEBAR */}
       <div
         style={{
           width: "340px",
@@ -538,6 +590,7 @@ export default function App() {
         </button>
       </div>
 
+      {/* CANVAS */}
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {!imageUrl ? (
           <p style={{ opacity: 0.5 }}>Завантаж фото…</p>
